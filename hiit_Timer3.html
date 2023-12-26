@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HIIT Timer</title>
+  <style>
+
+      @font-face {
+      font-family: 'SevenSegment';
+      src: url('Seven Segment.ttf') format('truetype'); /* Update the path accordingly */
+      font-weight: normal;
+      font-style: normal;
+    }
+
+    body {
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      background-color: #000;
+      color: #ff0000;
+      font-family: 'SevenSegment', 'Courier New', Courier, monospace;
+      /*font-family: 'Courier New', Courier, monospace;*/
+      user-select: none;
+    }
+
+    #timer-container {
+      text-align: center;
+    }
+
+    .timer {
+      font-size: 5em;
+      margin-bottom: 10px;
+    }
+
+    #total-time {
+      font-size: 1.5em;
+      margin-bottom: 10px;
+    }
+
+    #heartRateContainer {
+      text-align: center;
+      margin-top: 20px; /* Adjust as needed */
+    }
+
+    #heartRate {
+      font-size: 2em; /* Adjust as needed */
+      margin-top: 5px; /* Adjust as needed */
+    }
+
+    button {
+      background-color: #ff0000;
+      color: #000;
+      font-size: 1.5em;
+      padding: 10px 20px;
+      border: none;
+      cursor: pointer;
+      font-family: 'SevenSegment', 'Courier New', Courier, monospace;
+    }
+  </style>
+</head>
+<body>
+  <div id="timer-container">
+    <div class="timer" id="exercise-timer" onclick="changeTimer('exercise')">30</div>
+    <div class="timer" id="rest-timer" onclick="changeTimer('rest')">15</div>
+    <div id="total-time">00:00</div>
+  </div>
+  <button id="startStopBtn" onclick="startStopTimer()">Start</button>
+
+  <div id="heartRateContainer">
+    <p id="heartRate">N/A BPM</p>
+  </div>
+
+<button id="connectButton">Connect to HRM</button>
+
+
+  <!-- Audio element for beep sound -->
+  <audio id="beepSound">
+    <source src="beep.wav" type="audio/wav">
+    Your browser does not support the audio element.
+  </audio>
+
+<script>
+  let exerciseTime = 30; // in seconds
+  let restTime = 15; // in seconds
+  let initialExerciseTime = exerciseTime;
+  let isExerciseTime = true;
+  let timerInterval;
+  let totalTimeInSeconds = 0;
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const connectButton = document.getElementById('connectButton');
+    const heartRateValue = document.getElementById('heartRate');
+
+    connectButton.addEventListener('click', async () => {
+      try {
+        const device = await navigator.bluetooth.requestDevice({
+          filters: [{ services: ['heart_rate'] }],
+        });
+
+        const server = await device.gatt.connect();
+        const service = await server.getPrimaryService('heart_rate');
+        const heartRateCharacteristic = await service.getCharacteristic('heart_rate_measurement');
+
+        await heartRateCharacteristic.startNotifications();
+
+        heartRateCharacteristic.addEventListener('characteristicvaluechanged', (event) => {
+          const value = event.target.value;
+          const heartRate = value.getUint8(1);
+          heartRateValue.textContent = `${heartRate} BPM`;
+
+            if (heartRate >= 160) {
+            speakText(`1 ${heartRate - 100}`);
+            //speakText(`${heartRate}`);
+            } 
+
+        });
+
+        connectButton.disabled = true;
+      } catch (error) {
+        console.error('Error connecting to heart rate monitor:', error);
+      }
+    });
+
+    // Your existing code for the timer setup
+  });
+
+  function startStopTimer() {
+    const startStopBtn = document.getElementById("startStopBtn");
+    if (startStopBtn.innerHTML === "Start") {
+      startStopBtn.innerHTML = "Stop";
+      timerInterval = setInterval(updateTimer, 1000);
+    } else {
+      startStopBtn.innerHTML = "Start";
+      clearInterval(timerInterval);
+    }
+  }
+
+  function updateTimer() {
+    const timerElement = document.getElementById(isExerciseTime ? "exercise-timer" : "rest-timer");
+    let currentTime = parseInt(timerElement.innerHTML, 10);
+
+    if (currentTime === 0) {
+      playBeepSound();
+      if (isExerciseTime) {
+        isExerciseTime = false;
+        exerciseTime = initialExerciseTime;
+        currentTime = exerciseTime;
+      } else {
+        isExerciseTime = true;
+        currentTime = restTime;
+      }
+    } else {
+      currentTime--;
+    }
+
+    timerElement.innerHTML = currentTime;
+    updateTotalTime();
+  }
+
+  function updateTotalTime() {
+    totalTimeInSeconds++;
+
+    const minutes = Math.floor(totalTimeInSeconds / 60);
+    const seconds = totalTimeInSeconds % 60;
+
+    const totalTimeElement = document.getElementById("total-time");
+    totalTimeElement.innerHTML = `${formatTime(minutes)}:${formatTime(seconds)}`;
+  }
+
+  function formatTime(time) {
+    return time < 10 ? `0${time}` : time;
+  }
+
+  function playBeepSound() {
+    const beepSound = document.getElementById("beepSound");
+    beepSound.play();
+  }
+
+  function changeTimer(type) {
+    const timerElement = document.getElementById(type === 'exercise' ? "exercise-timer" : "rest-timer");
+    const newTime = prompt(`Enter new ${type} time (in seconds):`);
+    if (!isNaN(newTime) && newTime > 0) {
+      if (type === 'exercise') {
+        initialExerciseTime = parseInt(newTime, 10);
+        exerciseTime = initialExerciseTime;
+      } else {
+        restTime = parseInt(newTime, 10);
+      }
+      timerElement.innerHTML = newTime;
+    }
+  }
+
+  function speakText(text) {
+    const utterance = new SpeechSynthesisUtterance(text);
+  /*
+    // Get the list of available voices
+    const voices = window.speechSynthesis.getVoices();
+
+    // Find the voice by name
+    const selectedVoice = voices.find(voice => voice.name === 'en-AU-Standard-C');
+
+    // Set the selected voice
+    utterance.voice = selectedVoice;
+*/
+    speechSynthesis.speak(utterance);
+  }
+
+</script>
+
+</body>
+</html>
